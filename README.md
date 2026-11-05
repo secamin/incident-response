@@ -82,3 +82,4 @@ run them only on systems you are authorised to assess, and follow your organisat
 [secamin](https://github.com/secamin) - SIEM Detection Content. See also
 [secamin/detection-engineering](https://github.com/secamin/detection-engineering) for SIEM detection content
 (Sigma, multi-SIEM).
+Co-authored-by: HXM14 <36288517+HXM14@users.noreply.github.com>
