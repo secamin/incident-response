@@ -1,0 +1,20 @@
+# Anti-logging command patterns used by linux-log-gap-analysis.sh -d
+# Searched in auditd EXECVE records (hex arguments decoded), shell histories and sudo COMMAND= lines.
+# Format: <name><TAB><regex>  - POSIX extended regex, matched case-insensitively. Use [[:space:]] instead of \s
+# (mawk has no \s / \d). Lines starting with # are ignored. Kept outside the script so the list can be tuned.
+History clearing / disabling	(^|[;&|[:space:]])history[[:space:]]+-c|unset[[:space:]]+histfile|histfile=/dev/null|histsize=0|set[[:space:]]+\+o[[:space:]]+history|ln[[:space:]]+-sf?[[:space:]]+/dev/null[[:space:]]+.*history
+History file wiping	(rm|shred|truncate|wipe|srm)([[:space:]]+-[a-z0-9]+)*[[:space:]].*(bash|zsh|sh|python|mysql|psql)_history|>[[:space:]]*[^[:space:]]*_history
+Log file deletion	(rm|shred|unlink|wipe|srm)[[:space:]].*/var/log/
+Log file truncation	truncate[[:space:]]+-s[[:space:]]*0|(^|[;&|[:space:]])(:|true|echo[[:space:]]*["']?["']?|cat[[:space:]]+/dev/null)[[:space:]]*>[[:space:]]*/var/log/|cp[[:space:]]+/dev/null[[:space:]]+/var/log/
+Login record tampering	utmpdump[[:space:]].*-r|(>|cp[[:space:]]+[^[:space:]]+[[:space:]]+)[[:space:]]*/var/(log|run)/(wtmp|btmp|lastlog|utmp)
+auditd disabled / rules removed	auditctl[[:space:]]+(-D|-e[[:space:]]*0)|(systemctl|service)[[:space:]]+.*(stop|disable|mask|kill).*audit|(kill|pkill|killall)[[:space:]]+.*auditd|augenrules[[:space:]]+--load.*/dev/null
+Syslog / journald disabled	(systemctl|service)[[:space:]]+.*(stop|disable|mask|kill).*(rsyslog|syslog-ng|syslog|systemd-journald|journald)|(kill|pkill|killall)[[:space:]]+.*(rsyslogd|syslog-ng|journald)
+Journal deleted	journalctl[[:space:]]+.*--(vacuum|rotate)|rm[[:space:]].*/(var|run)/log/journal
+Log immutable / attribute change	chattr[[:space:]]+[+-][ia][[:space:]]+.*(/var/log|audit)
+Kernel audit / SELinux off	setenforce[[:space:]]+0|selinux=disabled|audit=0
+Preload rootkit	/etc/ld\.so\.preload|ld_preload=
+Kernel module rootkit	(insmod|modprobe)[[:space:]].*(diamorphine|reptile|suterusu|rootkit|\.ko([[:space:]]|$))
+Known log cleaners	mig-logcleaner|logtamper|zap[23]|vanish2|wipe[[:space:]]+-[ulw]|sshlog-cleaner|clearlogs|0x333shadow
+Timestomping	touch[[:space:]]+(-[a-z]*[rd]|--reference|--date)
+EDR / agent stopped	(systemctl|service)[[:space:]]+.*(stop|disable|mask).*(falcon|mdatp|traps|cortex|sentinel|cbagent|splunk|wazuh|ossec|elastic|filebeat|auditbeat|sysmon)|(splunk[[:space:]]+(stop|disable))
+Firewall flushed	iptables[[:space:]]+-F|nft[[:space:]]+flush[[:space:]]+ruleset|ufw[[:space:]]+disable|systemctl[[:space:]]+(stop|disable)[[:space:]]+firewalld

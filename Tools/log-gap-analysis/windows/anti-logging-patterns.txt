@@ -1,0 +1,17 @@
+# Anti-logging command patterns used by Invoke-LogGapAnalysis.ps1 -DeepScan
+# Searched in Security 4688, Sysmon 1, PowerShell 4104 / 400 / 800 event data (case-insensitive .NET regex).
+# Format: <name><TAB><regex>   - lines starting with # are ignored. Kept outside the script on purpose:
+# these attacker strings inside the .ps1 make AMSI / Defender block the whole script.
+wevtutil clear / reconfigure log	wevtutil(\.exe)?["']?\s+(cl|clear-log|sl|set-log)\s
+PowerShell log clearing	Clear-EventLog|Remove-EventLog|Limit-EventLog|\.ClearLog\(
+auditpol modification	auditpol(\.exe)?["']?\s+.*/(set|clear|remove|restore)
+Event Log service stop / disable	(sc(\.exe)?|Stop-Service|Set-Service|net(\.exe)?\s+stop).{0,40}\beventlog\b
+MiniNt registry key	Control\\MiniNt
+ETW autologger tampering	WMI\\Autologger\\(EventLog-|Defender)
+Sysmon uninstall / driver unload	sysmon(64)?(\.exe)?["']?\s+-u|fltmc(\.exe)?["']?\s+unload|logman.{0,40}(stop|delete|update).{0,60}(eventlog|sysmon)
+Defender disabled	Set-MpPreference.{0,80}-Disable|DisableRealtimeMonitoring|DisableAntiSpyware
+PowerShell logging disabled	EnableScriptBlockLogging.{0,40}\b0\b|ScriptBlockLogging.{0,60}(Remove-Item|reg(\.exe)?\s+delete)
+PowerShell v2 downgrade	powershell(\.exe)?["']?\s+(-\w+\s+)*-v(ersion)?\s+2
+Known log tampering tool	phant0m|event::(drop|clear)|eventlogedit|EvtMute|SharpEvtMute
+Event log file deletion	(del|erase|Remove-Item|rm)\s.{0,120}\.evtx
+USN journal deletion	fsutil(\.exe)?["']?\s+usn\s+deletejournal
