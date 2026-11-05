@@ -58,7 +58,7 @@ A sincere thank you to the contributors who give their time and experience to bu
 | Contributor | Contribution |
 |---|---|
 | [HXM14](https://github.com/HXM14) | Co-author and contributor - Log Gap Analysis |
-| [Ke0xes](https://github.com/Ke0xes) (Kunal Hatode) | Real-world scenarios - [Log Gap Analysis scenarios](Tools/log-gap-analysis/docs/SCENARIOS.md) |
+| [Ke0xes](https://github.com/Ke0xes) (Kunal Hatode) | Real-world scenarios - [Log Gap Analysis scenarios](Tools/log-gap-analysis/SCENARIOS.md) |
 
 Your support turns field experience into tools the whole community can use. Thank you.
 

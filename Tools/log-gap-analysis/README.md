@@ -129,7 +129,7 @@ Each report gives the exact fix, so the team corrects the gaps. When a real inci
 
 *Scenarios contributed by Kunal Hatode ([Ke0xes](https://github.com/Ke0xes)).*
 
-> A standalone version of these scenarios, easy to share, is in **[docs/SCENARIOS.md](docs/SCENARIOS.md)**.
+> A standalone version of these scenarios, easy to share, is in **[SCENARIOS.md](SCENARIOS.md)**.
 
 ## Sample report
 

@@ -98,4 +98,4 @@ Each report gives the exact fix, so the team corrects the gaps. When a real inci
 
 ---
 
-Back to the [Log Gap Analysis README](../README.md) - see the [sample report screenshots](../README.md#sample-report).
+Back to the [Log Gap Analysis README](README.md) - see the [sample report screenshots](README.md#sample-report).
