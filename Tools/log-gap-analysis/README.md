@@ -127,7 +127,9 @@ Each report gives the exact fix, so the team corrects the gaps. When a real inci
 - It cannot see SACLs, so object-access findings mean "auditing is configured", not "this folder is audited".
 - A rootkit can hide data from it. A clean result is not proof that a host is clean.
 
-*Scenarios contributed by Kunal Hatode.*
+*Scenarios contributed by Kunal Hatode ([Ke0xes](https://github.com/Ke0xes)).*
+
+> A standalone version of these scenarios, easy to share, is in **[docs/SCENARIOS.md](docs/SCENARIOS.md)**.
 
 ## Sample report
 
