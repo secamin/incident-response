@@ -31,6 +31,12 @@ See the README in each folder for step-by-step instructions, troubleshooting and
 
 Both tools are read-only and need nothing installed. A clean result is not proof that a host is clean: a rootkit can hide data from the script.
 
+## Compliance mapping (optional)
+
+With `-ComplianceMap` (Windows) or `-c` (Linux) every finding also carries the SOC 2 and ISO 27001 controls it is evidence for: an extra `Compliance` field in `findings.csv` and `results.json`, and a `Controls` column in `report.html`. The mapping is a CSV next to the two folders, so extending it is a data change rather than a code change, and without the flag the output is byte for byte what it was. See [compliance/README.md](compliance/README.md) for the schema and [compliance/test_control_map.py](compliance/test_control_map.py) for the check that keeps the map in step with the findings.
+
+It is not an audit opinion. A finding marked CC7.2 means the gap sits in the evidence an auditor would ask for when testing monitoring on this host, not that an organisation failed the control.
+
 ## Why it matters
 
 The tool solves a problem every incident response team knows: **the first hours of an incident are spent collecting

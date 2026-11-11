@@ -70,7 +70,9 @@ param(
     [int]$GapMinutes = 60,
     [switch]$SkipSplunkBtool,
     [switch]$ExpandDomainGroups,
-    [int]$LogonMaxEvents = 50000
+    [int]$LogonMaxEvents = 50000,
+    [switch]$ComplianceMap,
+    [string]$ComplianceMapPath = ''
 )
 
 $ErrorActionPreference = 'Continue'
@@ -353,6 +355,7 @@ function Get-AntiLoggingPatterns {
 $script:RunLog = New-Object System.Collections.ArrayList
 $script:RegLog = New-Object System.Collections.ArrayList
 $script:Findings = New-Object System.Collections.ArrayList
+$script:ComplianceOn = $false
 $script:Workflow = New-Object System.Collections.ArrayList
 $SevRank = @{ Critical = 5; High = 4; Medium = 3; Low = 2; Info = 1 }
 
@@ -374,6 +377,43 @@ function Add-Finding {
     [void]$script:Findings.Add((New-Object PSObject -Property @{
         Severity = $Severity; Category = $Category; Title = $Title; Detail = $Detail; Evidence = $Evidence
         Recommendation = $Recommendation; Mitre = $Mitre; Rank = $SevRank[$Severity] }))
+}
+
+function Import-ComplianceMap([string]$Path) {
+    $map = @{}
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    foreach ($row in @(Import-Csv -LiteralPath $Path)) {
+        $k = ''; if ($row.key) { $k = ([string]$row.key).Trim() }
+        if (-not $k -or $k.StartsWith('#')) { continue }
+        if (-not $row.framework -or -not $row.control) { continue }
+        if (-not $map.ContainsKey($k)) { $map[$k] = New-Object System.Collections.ArrayList }
+        [void]$map[$k].Add(([string]$row.framework).Trim() + ':' + ([string]$row.control).Trim())
+    }
+    if ($map.Count -eq 0) { return $null }
+    return $map
+}
+
+function Get-ComplianceControls($Map, [string]$Mitre, [string]$Category) {
+    $ids = New-Object System.Collections.ArrayList
+    if ($Mitre) {
+        foreach ($t in @($Mitre -split '[,;\s]+')) {
+            if (-not $t) { continue }
+            $probe = $t
+            while ($probe) {
+                if ($Map.ContainsKey($probe)) {
+                    foreach ($x in $Map[$probe]) { if (-not $ids.Contains($x)) { [void]$ids.Add($x) } }
+                    break
+                }
+                $cut = $probe.LastIndexOf('.')
+                if ($cut -gt 1) { $probe = $probe.Substring(0, $cut) } else { break }
+            }
+        }
+    }
+    if ($ids.Count -eq 0 -and $Category) {
+        $k = 'category:' + $Category.ToLower()
+        if ($Map.ContainsKey($k)) { foreach ($x in $Map[$k]) { if (-not $ids.Contains($x)) { [void]$ids.Add($x) } } }
+    }
+    return ($ids -join ';')
 }
 
 function Num($Value, [string]$Format = '0.##') {
@@ -2458,12 +2498,14 @@ function New-HtmlReport {
 
     # ---- findings
     A '<section id="findings" class="card"><h2>Findings</h2><p class="sub">Sorted by severity. Each finding includes the evidence and a recommended action.</p>'
-    A '<input class="filter" data-table="tf" placeholder="Filter findings..."><div class="tw"><table class="t" id="tf"><thead><tr><th style="width:80px">Severity</th><th style="width:100px">Category</th><th style="width:32%">Finding</th><th>Evidence</th><th style="width:26%">Recommendation</th></tr></thead><tbody>'
+    A ('<input class="filter" data-table="tf" placeholder="Filter findings..."><div class="tw"><table class="t" id="tf"><thead><tr><th style="width:80px">Severity</th><th style="width:100px">Category</th><th style="width:32%">Finding</th><th>Evidence</th><th style="width:26%">Recommendation</th>{0}</tr></thead><tbody>' -f $(if ($script:ComplianceOn) { '<th style="width:12%">Controls</th>' } else { '' }))
     foreach ($f in ($script:Findings | Sort-Object @{ Expression = { $_.Rank }; Descending = $true }, Category)) {
         $mitre = ''; if ($f.Mitre) { $mitre = ' <span class="tag">' + (Esc $f.Mitre) + '</span>' }
-        A ('<tr><td>{0}</td><td class="nowrap">{1}</td><td><b>{2}</b>{3}<div class="small muted">{4}</div></td><td class="small">{5}</td><td class="small">{6}</td></tr>' -f (Get-Badge $f.Severity $f.Severity), (Esc $f.Category), (Esc $f.Title), $mitre, (Esc $f.Detail), (Esc $f.Evidence), (Esc $f.Recommendation))
+        $comp = ''; if ($script:ComplianceOn) { $comp = '<td class="small">' + (Esc $f.Compliance) + '</td>' }
+        A ('<tr><td>{0}</td><td class="nowrap">{1}</td><td><b>{2}</b>{3}<div class="small muted">{4}</div></td><td class="small">{5}</td><td class="small">{6}</td>{7}</tr>' -f (Get-Badge $f.Severity $f.Severity), (Esc $f.Category), (Esc $f.Title), $mitre, (Esc $f.Detail), (Esc $f.Evidence), (Esc $f.Recommendation), $comp)
     }
-    if ($script:Findings.Count -eq 0) { A '<tr><td colspan="5" class="muted">No findings.</td></tr>' }
+    $colSpan = 5; if ($script:ComplianceOn) { $colSpan = 6 }
+    if ($script:Findings.Count -eq 0) { A ('<tr><td colspan="{0}" class="muted">No findings.</td></tr>' -f $colSpan) }
     A '</tbody></table></div></section>'
 
     # ---- timeline
@@ -2688,9 +2730,27 @@ function Write-TextFile([string]$Path, [string]$Text) {
 function Export-Results {
     $out = $script:OutDir
     $sys = $script:Sys
+    if ($ComplianceMap) {
+        $mapPath = $ComplianceMapPath
+        if (-not $mapPath) {
+            $toolRoot = Split-Path -Parent (Split-Path -Parent $ScriptPath)
+            $mapPath = Join-Path (Join-Path $toolRoot 'compliance') 'control-map.csv'
+        }
+        $map = Import-ComplianceMap $mapPath
+        if ($map) {
+            $script:ComplianceOn = $true
+            foreach ($f in $script:Findings) {
+                $f | Add-Member -MemberType NoteProperty -Name Compliance -Value (Get-ComplianceControls $map $f.Mitre $f.Category) -Force
+            }
+        } else {
+            Write-Host ('Compliance map not found or empty: ' + $mapPath + ' - continuing without control mapping') -ForegroundColor Yellow
+        }
+    }
     Write-TextFile (Join-Path $out 'report.html') (New-HtmlReport)
 
-    $script:Findings | Sort-Object @{ Expression = { $_.Rank }; Descending = $true } | Select-Object Severity, Category, Title, Detail, Evidence, Recommendation, Mitre |
+    $fCols = @('Severity', 'Category', 'Title', 'Detail', 'Evidence', 'Recommendation', 'Mitre')
+    if ($script:ComplianceOn) { $fCols += 'Compliance' }
+    $script:Findings | Sort-Object @{ Expression = { $_.Rank }; Descending = $true } | Select-Object $fCols |
         Export-Csv -Path (Join-Path $out 'findings.csv') -NoTypeInformation -Encoding UTF8
     $script:UCResults | ForEach-Object {
         New-Object PSObject -Property @{ Id = $_.Id; UseCase = $_.Name; Tactic = $_.Tactic; Mitre = $_.Mitre; Local = $_.Status; Splunk = $_.Siem

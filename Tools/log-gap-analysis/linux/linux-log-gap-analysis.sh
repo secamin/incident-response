@@ -31,6 +31,7 @@ linux-log-gap-analysis.sh - by secamin (https://github.com/secamin), co-author a
   -g MIN      deep scan: report silences longer than MIN minutes (default 60)
   -m LINES    deep scan: maximum lines read per log (default 5000000)
   -p FILE     anti-logging pattern file (default: anti-logging-patterns-linux.txt next to the script)
+  -c          add SOC 2 / ISO 27001 control ids to every finding (compliance/control-map.csv)
   -h          this help
 
 Example:
@@ -42,8 +43,8 @@ if [ -z "${BASH_VERSINFO:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
     echo "This script needs bash 4.0 or later." >&2; exit 2
 fi
 
-OUTPUT_PATH=''; SUSPECT_IN=''; DEEP=0; GAP_MIN=60; DEEP_MAX=5000000; PATTERN_FILE=''
-while getopts ':o:s:dg:m:p:h' opt; do
+OUTPUT_PATH=''; SUSPECT_IN=''; DEEP=0; GAP_MIN=60; DEEP_MAX=5000000; PATTERN_FILE=''; COMPLIANCE=0
+while getopts ':o:s:dg:m:p:ch' opt; do
     case "$opt" in
         o) OUTPUT_PATH="$OPTARG" ;;
         s) SUSPECT_IN="$OPTARG" ;;
@@ -51,6 +52,7 @@ while getopts ':o:s:dg:m:p:h' opt; do
         g) GAP_MIN="$OPTARG" ;;
         m) DEEP_MAX="$OPTARG" ;;
         p) PATTERN_FILE="$OPTARG" ;;
+        c) COMPLIANCE=1 ;;
         h) usage; exit 0 ;;
         :) echo "Option -$OPTARG needs a value" >&2; usage; exit 2 ;;
         *) echo "Unknown option -$OPTARG" >&2; usage; exit 2 ;;
@@ -88,6 +90,16 @@ OUTPUT_PATH="$(cd "$OUTPUT_PATH" && pwd)"
 OUT="$OUTPUT_PATH/LinuxLogGap_${HOST_SHORT}_$(date +%Y%m%d_%H%M%S)"
 RAW="$OUT/raw"; W="$OUT/.work"
 mkdir -p "$RAW" "$W" || exit 2
+COMPLIANCE_MAP="${COMPLIANCE_MAP:-$SCRIPT_DIR/../compliance/control-map.csv}"
+if [ "$COMPLIANCE" -eq 1 ]; then
+    if [ -r "$COMPLIANCE_MAP" ]; then
+        tr -d '\r' < "$COMPLIANCE_MAP" > "$W/control-map.csv"
+        COMPLIANCE_MAP="$W/control-map.csv"
+    else
+        printf 'Compliance map not found: %s - continuing without control mapping\n' "$COMPLIANCE_MAP" >&2
+        COMPLIANCE=0
+    fi
+fi
 
 IS_ROOT=0; [ "$(id -u)" -eq 0 ] && IS_ROOT=1
 SYSTEMD=0; [ -d /run/systemd/system ] && SYSTEMD=1
@@ -116,8 +128,28 @@ step() {   # step LEVEL MESSAGE
     printf '%s%s%s\n' "$c" "$line" "$c_reset" >&2
 }
 clean() { printf '%s' "$*" | tr '\t\r\n' '   '; }
+compliance_for() {   # mitre category -> framework:control;framework:control (empty when disabled)
+    [ "$COMPLIANCE" -eq 1 ] || return 0
+    local mitre="$1" cat="$2" out='' t probe hit
+    for t in $(printf '%s' "$mitre" | tr ',;' '  '); do
+        probe="$t"
+        while [ -n "$probe" ]; do
+            hit=$(awk -F',' -v k="$probe" '$1==k { printf "%s:%s;", $2, $3 }' "$COMPLIANCE_MAP")
+            [ -n "$hit" ] && { out="$out$hit"; break; }
+            case "$probe" in *.*) probe="${probe%.*}" ;; *) break ;; esac
+        done
+    done
+    if [ -z "$out" ] && [ -n "$cat" ]; then
+        out=$(awk -F',' -v k="category:$(printf '%s' "$cat" | tr 'A-Z' 'a-z')" '$1==k { printf "%s:%s;", $2, $3 }' "$COMPLIANCE_MAP")
+    fi
+    printf '%s' "$out" | tr ';' '\n' | awk 'NF && !seen[$0]++ { printf "%s;", $0 }' | sed 's/;$//'
+}
 add_finding() {   # severity category title detail evidence recommendation mitre
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "${4:-}")" "$(clean "${5:-}")" "$(clean "${6:-}")" "$(clean "${7:-}")" >> "$F_FIND"
+    if [ "$COMPLIANCE" -eq 1 ]; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "${4:-}")" "$(clean "${5:-}")" "$(clean "${6:-}")" "$(clean "${7:-}")" "$(compliance_for "${7:-}" "$2")" >> "$F_FIND"
+    else
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(clean "$1")" "$(clean "$2")" "$(clean "$3")" "$(clean "${4:-}")" "$(clean "${5:-}")" "$(clean "${6:-}")" "$(clean "${7:-}")" >> "$F_FIND"
+    fi
 }
 add_event() {     # epoch severity source kind title detail
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${1:-0}" "$2" "$(clean "$3")" "$4" "$(clean "$5")" "$(clean "${6:-}")" >> "$F_EV"
@@ -1530,9 +1562,9 @@ write_report() {
     printf '</div></div><div class="verdict">%s</div></section>' "$(hesc "$(verdict)")"
     # findings
     printf '<section id="findings" class="card"><h2>Findings</h2><p class="sub">Sorted by severity. Each finding includes the evidence and a recommended action. Category <b>Access</b> does not change the score.</p>'
-    printf '<input class="filter" data-table="tf" placeholder="Filter findings..."><div class="tw"><table class="t" id="tf"><thead><tr><th style="width:80px">Severity</th><th style="width:100px">Category</th><th style="width:32%%">Finding</th><th>Evidence</th><th style="width:26%%">Recommendation</th></tr></thead><tbody>'
+    printf '<input class="filter" data-table="tf" placeholder="Filter findings..."><div class="tw"><table class="t" id="tf"><thead><tr><th style="width:80px">Severity</th><th style="width:100px">Category</th><th style="width:32%%">Finding</th><th>Evidence</th><th style="width:26%%">Recommendation</th>%s</tr></thead><tbody>' "$( [ "$COMPLIANCE" -eq 1 ] && printf '<th style="width:12%%">Controls</th>' )"
     awk -F'\t' 'BEGIN{ r["Critical"]=5; r["High"]=4; r["Medium"]=3; r["Low"]=2; r["Info"]=1 } { print r[$1] "\t" $0 }' "$F_FIND" | sort -t$'\t' -k1,1nr -s | cut -f2- |
-        rawk -F'\t' '{ m=($7!="")?" <span class=\"tag\">" h($7) "</span>":""; printf "<tr><td>%s</td><td class=\"nowrap\">%s</td><td><b>%s</b>%s<div class=\"small muted\">%s</div></td><td class=\"small\">%s</td><td class=\"small\">%s</td></tr>", badge($1,$1), h($2), h($3), m, h($4), h($5), h($6) }'
+        rawk -F'\t' -v COMP="$COMPLIANCE" '{ m=($7!="")?" <span class=\"tag\">" h($7) "</span>":""; printf "<tr><td>%s</td><td class=\"nowrap\">%s</td><td><b>%s</b>%s<div class=\"small muted\">%s</div></td><td class=\"small\">%s</td><td class=\"small\">%s</td>%s</tr>", badge($1,$1), h($2), h($3), m, h($4), h($5), h($6), ((COMP==1)?"<td class=\\"small\\">" h($8) "</td>":"") }'
     printf '</tbody></table></div></section>'
     # timeline
     printf '<section id="timeline" class="card"><h2>Log coverage timeline</h2><p class="sub">Each bar spans the oldest to the newest entry of a log (all rotations). Green reaches back to the suspected start (or 7+ days), red does not. Dashed lines are boots, dots are tampering events.</p>'
@@ -1666,7 +1698,9 @@ tsv2json() {  # tsv2json TSV "name1,name2,..." [epoch columns]
 }
 
 export_results() {
-    tsv2csv "$F_FIND" "$OUT/findings.csv" 'Severity,Category,Finding,Detail,Evidence,Recommendation,Mitre'
+    local fhdr='Severity,Category,Finding,Detail,Evidence,Recommendation,Mitre' jkeys='severity,category,title,detail,evidence,recommendation,mitre'
+    [ "$COMPLIANCE" -eq 1 ] && fhdr="$fhdr,Compliance" && jkeys="$jkeys,compliance"
+    tsv2csv "$F_FIND" "$OUT/findings.csv" "$fhdr"
     tsv2csv "$F_UC" "$OUT/usecases.csv" 'Id,UseCase,Tactic,Mitre,Local,Sources,SIEM,SIEMDetail,HistorySeconds,Key'
     tsv2csv "$F_LOGS" "$OUT/logs.csv" 'Kind,Log,Path,Status,Files,Bytes,Oldest,Newest,Lines,LinesPerHour,SpanSeconds,Rotation,CapacityHours,Purpose,Note' '7 8'
     tsv2csv "$F_AR" "$OUT/auditrules.csv" 'Id,Coverage,Mitre,Status,Loaded,OnDisk,Why,Key'
@@ -1685,7 +1719,7 @@ export_results() {
         printf '"suspectedStart":"%s","deepScan":%s,' "$( [ -n "$SUSPECT" ] && fmt_epoch "$SUSPECT")" "$( [ $DEEP -eq 1 ] && echo true || echo false)"
         printf '"score":{"total":%s,"grade":"%s","label":"%s","capped":%s,"areas":%s},' "$SCORE" "$GRADE" "$LABEL" "$( [ $SCORE_CAPPED -eq 1 ] && echo true || echo false)" "$(tsv2json "$F_AREA" 'name,score,max,note')"
         printf '"verdict":"%s",' "$(json_str "$(verdict)")"
-        printf '"findings":%s,' "$(tsv2json "$F_FIND" 'severity,category,title,detail,evidence,recommendation,mitre')"
+        printf '"findings":%s,' "$(tsv2json "$F_FIND" "$jkeys")"
         printf '"useCases":%s,' "$(tsv2json "$F_UC" 'id,name,tactic,mitre,status,sources,siem,siemDetail,historySeconds,key')"
         printf '"logs":%s,' "$(tsv2json "$F_LOGS" 'kind,name,path,status,files,bytes,oldest,newest,lines,linesPerHour,spanSeconds,rotation,capacityHours,purpose,note' '7 8')"
         printf '"auditd":{"installed":%s,"running":%s,"enabledFlag":"%s","lost":"%s","rulesLoaded":%s,"rulesOnDisk":%s,"baseline":%s},' "$AUD_INSTALLED" "$AUD_RUNNING" "${AUD_ENABLED:-}" "${AUD_LOST:-}" "$AUD_RULES_LOADED" "$AUD_RULES_PERSIST" "$(tsv2json "$F_AR" 'id,name,mitre,status,loaded,onDisk,why,key')"

@@ -81,6 +81,8 @@ Copy both files together.
 | `-SkipSplunkBtool` | parse Splunk `.conf` files directly instead of running `splunk.exe btool` |
 | `-ExpandDomainGroups` | also expand domain groups inside local Administrators / RDP Users (needs a reachable DC; always on for a DC) |
 | `-LogonMaxEvents` | newest interactive logon events (4624) read from the Security log (default 50,000) |
+| `-ComplianceMap` | add the SOC 2 / ISO 27001 controls each finding is evidence for, as an extra `Compliance` field and a `Controls` column. Output is unchanged without it. See [compliance](../compliance/README.md) |
+| `-ComplianceMapPath` | use a different control map than `compliance/control-map.csv` |
 
 Without administrator rights the script still runs, but the Security log and the audit policy are reported as *unknown*.
 A 32-bit PowerShell session is re-launched as 64-bit automatically.

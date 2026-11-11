@@ -92,6 +92,7 @@ Copy both files together.
 | `-g MIN` | deep scan: report silences longer than MIN minutes (default 60) |
 | `-m LINES` | deep scan: maximum lines read per log (default 5,000,000) |
 | `-p FILE` | other pattern file (default: `anti-logging-patterns-linux.txt` next to the script) |
+| `-c` | add the SOC 2 / ISO 27001 controls each finding is evidence for, as an extra `Compliance` field and a `Controls` column. Output is unchanged without it. See [compliance](../compliance/README.md) |
 
 ## Output: `LinuxLogGap_<HOST>_<yyyyMMdd_HHmmss>/`
 
